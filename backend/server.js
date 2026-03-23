@@ -15,8 +15,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'resumeai_secret_change_this';
 // ── CORS ──────────────────────────────────────────────────────
 const allowedOrigins = [
   process.env.FRONTEND_URL,
-  'http://localhost:5173',
-  'http://localhost:3000',
+  'https://ai-resume-analyzer-psi-rouge.vercel.app/',
+  'https://ai-resume-analyzer-psi-rouge.vercel.app/',
 ].filter(Boolean);
 
 app.use(cors({

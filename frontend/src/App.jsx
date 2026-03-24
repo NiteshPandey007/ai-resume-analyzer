@@ -4,13 +4,6 @@ import axios from 'axios'
 const API = import.meta.env.VITE_API_URL || ''
 
 // ─── localStorage helpers ─────────────────────────────────────
-const LS_KEY = 'resumeai_history'
-const getHistory = () => { try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]') } catch { return [] } }
-const saveToHistory = (entry) => {
-  const h = getHistory()
-  h.unshift({ ...entry, savedAt: new Date().toISOString() })
-  localStorage.setItem(LS_KEY, JSON.stringify(h.slice(0, 50))) // keep last 50
-}
 
 // ─── Shared UI ────────────────────────────────────────────────
 const C = {
@@ -610,205 +603,6 @@ function ResumeBuilder({ onBack }) {
 }
 
 // ─── Admin Panel ──────────────────────────────────────────────
-function AdminLogin({ onLogin }) {
-  const [email, setEmail] = useState('')
-  const [pass, setPass] = useState('')
-  const [err, setErr] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  const login = async () => {
-    setLoading(true); setErr('')
-    try {
-      const { data } = await axios.post(`${API}/admin/login`, { email, password: pass })
-      localStorage.setItem('admin_token', data.token)
-      onLogin(data.token)
-    } catch (e) { setErr(e.response?.data?.error || 'Login failed') }
-    finally { setLoading(false) }
-  }
-
-  return (
-    <div style={{ maxWidth: 380, margin: '80px auto', padding: '0 24px' }}>
-      <Card>
-        <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>🔐</div>
-          <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 20, fontWeight: 700 }}>Admin Login</div>
-        </div>
-        <div style={{ marginBottom: 14 }}>
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)} style={inp({ marginBottom: 0 })} placeholder="admin@resumeai.com" />
-        </div>
-        <div style={{ marginBottom: 14 }}>
-          <input type="password" value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === 'Enter' && login()} style={inp({ marginBottom: 0 })} placeholder="Password" />
-        </div>
-        {err && <div style={{ color: C.danger, fontSize: 13, marginBottom: 12 }}>⚠ {err}</div>}
-        <Btn onClick={login} disabled={loading} style={{ width: '100%' }}>{loading ? 'Logging in...' : 'Login'}</Btn>
-      </Card>
-    </div>
-  )
-}
-
-function AdminDash({ onBack }) {
-  const [token] = useState(() => localStorage.getItem('admin_token') || '')
-  const [tab, setTab] = useState('stats')
-  const [stats, setStats] = useState(null)
-  const [resumes, setResumes] = useState([])
-  const [loading, setLoading] = useState(false)
-
-  const headers = { Authorization: `Bearer ${token}` }
-
-  const loadStats = async () => {
-    try { const { data } = await axios.get(`${API}/admin/stats`, { headers }); setStats(data.stats) } catch {}
-  }
-  const loadResumes = async () => {
-    setLoading(true)
-    try { const { data } = await axios.get(`${API}/admin/resumes`, { headers }); setResumes(data.resumes) } catch {}
-    finally { setLoading(false) }
-  }
-
-  useEffect(() => { loadStats(); loadResumes() }, [])
-
-  const del = async (id) => {
-    if (!confirm('Delete this resume?')) return
-    try { await axios.delete(`${API}/admin/resumes/${id}`, { headers }); setResumes(r => r.filter(x => x.id !== id)) } catch { alert('Failed') }
-  }
-
-  const logout = () => { localStorage.removeItem('admin_token'); onBack() }
-
-  const scoreColor = s => !s ? C.muted : s >= 75 ? C.teal : s >= 50 ? C.warn : C.danger
-
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28, flexWrap: 'wrap' }}>
-        <Btn onClick={onBack} variant="ghost">← Back</Btn>
-        <h2 style={{ fontFamily: 'Syne,sans-serif', fontSize: 20, flex: 1 }}>Admin Panel</h2>
-        <Btn onClick={logout} variant="danger" style={{ padding: '7px 14px', fontSize: 13 }}>Logout</Btn>
-      </div>
-
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
-        {['stats', 'resumes'].map(t => (
-          <button key={t} onClick={() => setTab(t)} style={{ padding: '8px 18px', borderRadius: 8, border: `1px solid ${tab === t ? C.accent : C.border}`, background: tab === t ? C.accent : C.bg3, color: tab === t ? '#fff' : C.muted, fontSize: 14, fontWeight: tab === t ? 600 : 400, cursor: 'pointer', textTransform: 'capitalize' }}>{t === 'stats' ? '📊 Dashboard' : '📄 Resumes'}</button>
-        ))}
-      </div>
-
-      {tab === 'stats' && stats && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Stat cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 14 }}>
-            {[
-              { icon: '📄', label: 'Total Resumes', val: stats.totalResumes, color: C.accent },
-              { icon: '⭐', label: 'Avg Score', val: `${stats.avgScore}/100`, color: C.teal },
-              { icon: '🤖', label: 'Avg ATS', val: `${stats.avgAts}/100`, color: C.warn },
-            ].map((s, i) => (
-              <Card key={i}>
-                <div style={{ fontSize: 28, marginBottom: 8 }}>{s.icon}</div>
-                <div style={{ fontSize: 26, fontWeight: 800, fontFamily: 'Syne,sans-serif', color: s.color }}>{s.val}</div>
-                <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>{s.label}</div>
-              </Card>
-            ))}
-          </div>
-
-          {/* Score distribution */}
-          <Card title="Score Distribution">
-            {Object.entries(stats.distribution || {}).map(([bucket, count]) => {
-              const max = Math.max(...Object.values(stats.distribution), 1)
-              return (
-                <div key={bucket} style={{ marginBottom: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-                    <span style={{ color: C.muted }}>{bucket}</span><span style={{ fontWeight: 600 }}>{count}</span>
-                  </div>
-                  <div style={{ height: 5, background: C.bg3, borderRadius: 3, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${(count / max) * 100}%`, background: C.accent, borderRadius: 3 }} />
-                  </div>
-                </div>
-              )
-            })}
-          </Card>
-
-          {/* Last 7 days */}
-          <Card title="Last 7 Days">
-            {Object.entries(stats.byDay || {}).length === 0
-              ? <div style={{ color: C.muted, fontSize: 13 }}>No uploads in last 7 days</div>
-              : Object.entries(stats.byDay).sort().map(([day, cnt]) => (
-                <div key={day} style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
-                  <span style={{ fontSize: 12, color: C.muted, width: 90 }}>{day.slice(5)}</span>
-                  <div style={{ flex: 1, height: 5, background: C.bg3, borderRadius: 3, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${(cnt / Math.max(...Object.values(stats.byDay))) * 100}%`, background: C.teal, borderRadius: 3 }} />
-                  </div>
-                  <span style={{ fontSize: 12, fontWeight: 600 }}>{cnt}</span>
-                </div>
-              ))}
-          </Card>
-        </div>
-      )}
-
-      {tab === 'resumes' && (
-        <div>
-          <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>{resumes.length} resumes stored in memory</div>
-          {loading && <div style={{ color: C.muted, textAlign: 'center', padding: 40 }}>Loading...</div>}
-          {!loading && resumes.length === 0 && <div style={{ color: C.muted, textAlign: 'center', padding: 40 }}>No resumes yet</div>}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {resumes.map(r => (
-              <Card key={r.id}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-                  <div style={{ fontSize: 28 }}>📄</div>
-                  <div style={{ flex: 1, minWidth: 150 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>{r.fileName}</div>
-                    <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>
-                      {new Date(r.uploadedAt).toLocaleString('en-IN')} · Session: {r.sessionId?.slice(0, 8)}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 10, color: C.muted }}>SCORE</div>
-                      <div style={{ fontWeight: 700, color: scoreColor(r.overallScore) }}>{r.overallScore ?? '—'}</div>
-                    </div>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 10, color: C.muted }}>ATS</div>
-                      <div style={{ fontWeight: 700, color: scoreColor(r.atsCompatibility) }}>{r.atsCompatibility ?? '—'}</div>
-                    </div>
-                    <Btn onClick={() => del(r.id)} variant="danger" style={{ padding: '6px 12px', fontSize: 13 }}>🗑 Delete</Btn>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── History Sidebar (localStorage) ──────────────────────────
-function HistorySidebar({ onSelect, onClose }) {
-  const [items, setItems] = useState(getHistory())
-  const clear = () => { localStorage.removeItem(LS_KEY); setItems([]) }
-
-  return (
-    <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 340, background: C.bg2, borderLeft: `1px solid ${C.border}`, zIndex: 100, overflowY: 'auto', padding: 20 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div style={{ fontWeight: 700, fontSize: 16 }}>📋 History</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {items.length > 0 && <button onClick={clear} style={{ background: 'transparent', border: 'none', color: C.danger, cursor: 'pointer', fontSize: 12 }}>Clear all</button>}
-          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 20 }}>×</button>
-        </div>
-      </div>
-      {items.length === 0 && <div style={{ color: C.muted, fontSize: 14, textAlign: 'center', marginTop: 40 }}>No history yet</div>}
-      {items.map((item, i) => (
-        <div key={i} onClick={() => { onSelect(item); onClose() }} style={{ padding: '12px 14px', background: C.bg3, borderRadius: 10, marginBottom: 10, cursor: 'pointer', border: `1px solid ${C.border}` }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = C.accent}
-          onMouseLeave={e => e.currentTarget.style.borderColor = C.border}>
-          <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.fileName}</div>
-          <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{new Date(item.savedAt).toLocaleString('en-IN')}</div>
-          <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
-            <span style={{ fontSize: 12, color: item.analysis?.overallScore >= 75 ? C.teal : item.analysis?.overallScore >= 50 ? C.warn : C.danger, fontWeight: 700 }}>Score: {item.analysis?.overallScore ?? '—'}</span>
-            <span style={{ fontSize: 12, color: C.muted }}>ATS: {item.analysis?.atsCompatibility ?? '—'}</span>
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 // ─── Main App ─────────────────────────────────────────────────
 export default function App() {
   const [page, setPage] = useState('home') // home | result | builder | admin | adminDash
@@ -817,8 +611,6 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState(null)
-  const [showHistory, setShowHistory] = useState(false)
-  const [adminToken, setAdminToken] = useState(() => localStorage.getItem('admin_token') || '')
   const [sessionId] = useState(() => Math.random().toString(36).slice(2))
 
   const analyze = async () => {
@@ -831,7 +623,6 @@ export default function App() {
       if (jobDesc.trim()) fd.append('jobDescription', jobDesc.trim())
       const { data } = await axios.post(`${API}/analyze`, fd, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 })
       // Save to localStorage
-      saveToHistory({ fileName: data.fileName, analysis: data.analysis, resumeText: data.resumeText, id: data.id })
       setResult({ ...data, resumeText: data.resumeText || '' })
       setPage('result')
     } catch (e) { setError(e.response?.data?.error || e.message || 'Something went wrong') }
@@ -851,8 +642,6 @@ export default function App() {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <Btn onClick={() => setPage('builder')} variant="ghost" style={{ fontSize: 13 }}>✏ Create Resume</Btn>
-          <Btn onClick={() => setShowHistory(h => !h)} variant="ghost" style={{ fontSize: 13 }}>📋 History</Btn>
-          <Btn onClick={() => setPage(adminToken ? 'adminDash' : 'admin')} variant="ghost" style={{ fontSize: 13, color: C.warn }}>⚙ Admin</Btn>
         </div>
       </nav>
 
@@ -900,11 +689,8 @@ export default function App() {
 
         {page === 'result' && result && <Results data={result} onBack={() => { setPage('home'); setResult(null); setFile(null) }} />}
         {page === 'builder' && <ResumeBuilder onBack={() => setPage('home')} />}
-        {page === 'admin' && <AdminLogin onLogin={t => { setAdminToken(t); setPage('adminDash') }} />}
-        {page === 'adminDash' && <AdminDash onBack={() => setPage('home')} />}
       </div>
 
-      {showHistory && <HistorySidebar onSelect={r => { setResult(r); setPage('result') }} onClose={() => setShowHistory(false)} />}
     </div>
   )
 }

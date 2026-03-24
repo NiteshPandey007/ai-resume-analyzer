@@ -12,13 +12,5 @@ export default defineConfig({
       '/admin': 'http://localhost:5000',
       '/health': 'http://localhost:5000'
     }
-  },
-  build: {
-    rollupOptions: {
-      input: {
-        main: './index.html',
-        admin: './admin.html'
-      }
-    }
   }
 })
